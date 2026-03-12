@@ -12,12 +12,6 @@
 ## and generates a summary table showing the number of individuals in each    ##
 ## age and sex category.                                                      ##
 ##                                                                            ##
-## Since the data from 2000–2011 is compiled into a single file and formatted ##
-## somewhat differently than the annual files from 2012 onwards, the script   ##
-## first creates a summary table for the years 2012 and later, followed by a  ##
-## separate table for 2000–2011. These two tables are then merged into one    ##
-## final summary table.                                                       ##
-##                                                                            ##
 ## To ensure the script works properly, you need to manually insert the URL   ##
 ## from the COAT Data Portal where the datasets are located.                  ##
 ## This should be done in the section titled:                                 ## 
@@ -27,7 +21,7 @@
 ## to your personal workspace, you need add the appropriate code at the end.  ##
 ##                                                                            ##
 ## Script created by Vegard Bang Fjeldheim for COAT Svalbard.                 ##
-## Last updated: 23.12.2025                                                   ##
+## Last updated: 12.03.2026                                                   ##
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
@@ -102,8 +96,7 @@ pot.categories <- c("male_adult","female_adult","unknown_adult","male_yearling",
                     "female_yearling","unknown_yearling","unknown_calf","unknown")
 
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
-####        Merge, check, and generate a summary table for the              ####
-####                    years 2012 to present                               ####
+####           Merge, check, and generate a summary table                   ####
 ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
 
 # make a vector with the names of relevant datasets
@@ -112,7 +105,7 @@ data_in <- ls(pattern = "^s_ungulates_abundance_")
 # make a list with the names of relevant datasets
 data_list <- lapply(data_in, get)
 
-# create a merged dataset for the years 2012 to present
+# create a merged dataset for all years
 merged_data <- bind_rows(data_list)
 
 # check the spelling of locality names
@@ -131,94 +124,29 @@ if(all(merged_data$v_animal_category %in% pot.categories)){
   merged_data[!(merged_data %in% pot.categories),]
 }
 
-# check that all rows have a date
-if(all(!is.na(merged_data$t_date))) {
-  print("all rows have a date. continue")
+#create a year column for data from 2012 and onwards
+merged_data <- merged_data %>%
+  mutate(
+    t_date = as.Date(t_date),                     
+    t_year = ifelse(!is.na(t_date),
+                    as.integer(format(t_date, "%Y")),
+                    t_year))
+
+# check that all rows have a year
+if(all(!is.na(merged_data$t_year))) {
+  print("all rows have a year. continue")
 } else {
-  print("some rows are missing a date. please check: ")
-  merged_data[is.na(merged_data$t_date), ]
+  print("some rows are missing year. please check: ")
+  merged_data[is.na(merged_data$t_year), ]
 }  
 
-# generate a summary table for the years 2012 to present
-summary_new <- merged_data %>%
-  mutate(t_year = year(ymd(t_date))) %>% #Add year to the dataset 
+# generate a summary table
+final.table <- merged_data %>%
   group_by(t_year, sn_locality, v_animal_category) %>%
   summarise(total = sum(v_abundance, na.rm = TRUE), .groups = "drop") %>%
   pivot_wider(names_from = v_animal_category, values_from = total, values_fill = 0) %>%
-  mutate(total_animals = rowSums(select(., intersect(pot.categories, colnames(.)))))
-
-# check first rows of table
-head(summary_new, 6)
-
-##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
-####    Check and generate a summary table for the years 2000 to 2011       ####
-##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
-
-# rename dataset and filter out unwanted rows
-data_old <- s_ungulates_summary_kongsfjorden_summer_2000_2011 %>%
-  filter(v_animal_category != "total")
-  
-# check the spelling of locality names
-if(all(data_old$sn_locality %in% pot.localities)){
-  print("all localities are correct. continue")
-} else {
-  print("some localities are spelled wrong. please check: ")
-  data_old[!(data_old %in% pot.localities),]
-}
-
-# check the spelling of animal category names
-if(all(data_old$v_animal_category %in% pot.categories)){
-  print("all categories are correct. continue")
-} else {
-  print("some categories are spelled wrong. please check: ")
-  data_old[!(data_old %in% pot.categories),]
-}
-
-# check that all rows have a year
-if(all(!is.na(data_old$t_year))) {
-  print("all rows have a year continue")
-} else {
-  print("some rows are missing a year please check: ")
-  data_old[is.na(data_old$t_year), ]
-}  
-
-# generate a summary table for the years 2000-2011
-summary_old <- data_old %>%
-  group_by(t_year, sn_locality, v_animal_category) %>%
-  summarise(total = sum(v_abundance, na.rm=TRUE), .groups = "drop") %>%
-  pivot_wider(names_from = v_animal_category, values_from = total, values_fill = NA) %>%
-  mutate(total_animals = rowSums(select(., intersect(pot.categories, colnames(.)))))
-
-
-# add columns with animal categories missing in the 2000–2011 dataset
-summary_old <- summary_old %>%
-  mutate(unknown_adult = 0,
-         unknown_yearling = 0)
-
-# reorder columns to match the structure of the 2012–present summary table
-summary_old <- summary_old %>%
-  select(t_year,
-         sn_locality, 
-         male_adult,
-         female_adult,
-         unknown_adult,
-         male_yearling,
-         female_yearling,
-         unknown_yearling,
-         unknown_calf,
-         unknown,
-         total_animals)
-
-# check first rows of table
-head(summary_old, 6)
-
-
-##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
-####            Make a final summary table for reindeer abundance in        ####
-####                  the coastal areas for all year                        ####
-##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~##
-
-final.table <- rbind(summary_old, summary_new)
+  mutate(total_animals = rowSums(select(., intersect(pot.categories, colnames(.))))) %>%
+  select(t_year, sn_locality, all_of(pot.categories))
 
 # check first rows of table
 head(final.table, 6)
